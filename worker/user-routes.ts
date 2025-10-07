@@ -96,6 +96,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       description: body.description || '',
       status: 'pending',
       category: body.category,
+      receiptUrl: body.receiptUrl || undefined,
       history: [],
     };
     try {
@@ -104,6 +105,62 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     } catch (error) {
       console.error('Failed to create expense:', error);
       return c.json({ success: false, error: 'Failed to create expense' }, 500);
+    }
+  });
+  app.put('/api/expenses/:id', async (c) => {
+    const expenseId = c.req.param('id');
+    const body = await c.req.json();
+    const expenseEntity = new ExpenseEntity(c.env, expenseId);
+    if (!(await expenseEntity.exists())) {
+      return notFound(c, 'Expense not found');
+    }
+    const currentExpense = await expenseEntity.getState();
+    if (currentExpense.userId !== body.userId) {
+      const userEntity = new UserEntity(c.env, body.userId);
+      const user = await userEntity.getState();
+      if (user.role !== 'admin') {
+        return c.json({ success: false, error: 'Unauthorized' }, 403);
+      }
+    }
+    if (currentExpense.status !== 'pending' && currentExpense.status !== 'rejected') {
+        return bad(c, 'Only pending or rejected expenses can be edited.');
+    }
+    const updatedExpenseData: Partial<Expense> = {
+      merchant: body.merchant,
+      amount: body.amount,
+      date: body.date,
+      category: body.category,
+      description: body.description,
+      receiptUrl: body.receiptUrl,
+      status: 'pending', // Reset status to pending on edit
+    };
+    try {
+      const updatedExpense = await expenseEntity.mutate(expense => ({ ...expense, ...updatedExpenseData }));
+      return ok(c, updatedExpense);
+    } catch (error) {
+      console.error('Failed to update expense:', error);
+      return c.json({ success: false, error: 'Failed to update expense' }, 500);
+    }
+  });
+  app.delete('/api/expenses/:id', async (c) => {
+    const expenseId = c.req.param('id');
+    const { userId } = await c.req.json();
+    const expenseEntity = new ExpenseEntity(c.env, expenseId);
+    if (!(await expenseEntity.exists())) {
+      return notFound(c, 'Expense not found');
+    }
+    const expense = await expenseEntity.getState();
+    const userEntity = new UserEntity(c.env, userId);
+    const user = await userEntity.getState();
+    if (expense.userId !== userId && user.role !== 'admin') {
+      return c.json({ success: false, error: 'Unauthorized' }, 403);
+    }
+    try {
+      await ExpenseEntity.delete(c.env, expenseId);
+      return ok(c, { id: expenseId });
+    } catch (error) {
+      console.error('Failed to delete expense:', error);
+      return c.json({ success: false, error: 'Failed to delete expense' }, 500);
     }
   });
   // APPROVAL WORKFLOW

@@ -4,7 +4,7 @@ import * as z from 'zod';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -23,30 +23,41 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/hooks/use-auth-store';
+import type { Expense } from '@shared/types';
 const expenseFormSchema = z.object({
   merchant: z.string().min(2, { message: 'Merchant name must be at least 2 characters.' }),
   amount: z.coerce.number().positive({ message: 'Amount must be a positive number.' }),
   date: z.date({
     required_error: 'A date is required.',
-    invalid_type_error: "That's not a valid date.",
   }),
   category: z.string().min(1, { message: 'Please select a category.' }),
   description: z.string().optional(),
+  receiptUrl: z.string().url({ message: 'Please enter a valid URL.' }).optional().or(z.literal('')),
 });
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 const categories = ['Meals', 'Travel', 'Software', 'Office Supplies', 'Utilities', 'Other'];
-export function ExpenseForm() {
+interface ExpenseFormProps {
+  expense?: Expense | null;
+}
+export function ExpenseForm({ expense }: ExpenseFormProps) {
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.currentUser);
+  const isEditMode = !!expense;
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
-    defaultValues: {
-      merchant: '',
-      amount: undefined,
-      date: new Date(),
-      description: '',
-      category: '',
-    },
+    defaultValues: isEditMode
+      ? {
+          ...expense,
+          date: new Date(expense.date),
+        }
+      : {
+          merchant: '',
+          amount: undefined,
+          date: new Date(),
+          description: '',
+          category: '',
+          receiptUrl: '',
+        },
   });
   const onSubmit = async (values: ExpenseFormValues) => {
     if (!currentUser) {
@@ -56,19 +67,25 @@ export function ExpenseForm() {
     const submissionData = {
       ...values,
       userId: currentUser.id,
-      date: values.date.getTime(), // Convert date to epoch timestamp
+      date: values.date.getTime(),
     };
-    const promise = api('/api/expenses', {
-      method: 'POST',
-      body: JSON.stringify(submissionData),
-    });
+    const apiCall = isEditMode
+      ? api(`/api/expenses/${expense.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(submissionData),
+        })
+      : api('/api/expenses', {
+          method: 'POST',
+          body: JSON.stringify(submissionData),
+        });
+    const promise = apiCall;
     toast.promise(promise, {
-      loading: 'Submitting expense...',
+      loading: isEditMode ? 'Updating expense...' : 'Submitting expense...',
       success: () => {
-        navigate('/expenses');
-        return 'Expense submitted successfully!';
+        navigate('/expenses', { state: { refresh: true } });
+        return `Expense ${isEditMode ? 'updated' : 'submitted'} successfully!`;
       },
-      error: 'Failed to submit expense. Please try again.',
+      error: (err) => `Failed to ${isEditMode ? 'update' : 'submit'} expense. ${err.message}`,
     });
   };
   return (
@@ -172,13 +189,36 @@ export function ExpenseForm() {
             </FormItem>
           )}
         />
+        <FormField
+          control={form.control}
+          name="receiptUrl"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Receipt</FormLabel>
+              <FormControl>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed bg-muted">
+                    <UploadCloud className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div className="flex-grow space-y-2">
+                    <Input placeholder="https://example.com/receipt.jpg" {...field} />
+                    <FormDescription>
+                      Mock upload: paste an image URL.
+                    </FormDescription>
+                  </div>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => navigate('/expenses')}>
             Cancel
           </Button>
           <Button type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Submit Expense
+            {isEditMode ? 'Save Changes' : 'Submit Expense'}
           </Button>
         </div>
       </form>

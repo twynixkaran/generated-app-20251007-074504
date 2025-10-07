@@ -16,6 +16,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { ExpensesListPage } from '@/pages/ExpensesListPage';
 import { SubmitExpensePage } from '@/pages/SubmitExpensePage';
 import { ExpenseDetailPage } from '@/pages/ExpenseDetailPage';
+import { EditExpensePage } from '@/pages/EditExpensePage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -49,6 +50,10 @@ const router = createBrowserRouter([
       {
         path: "expenses/:id",
         element: <ExpenseDetailPage />,
+      },
+      {
+        path: "expenses/:id/edit",
+        element: <EditExpensePage />,
       },
       {
         path: "settings",

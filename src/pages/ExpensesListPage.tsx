@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -23,26 +23,34 @@ export function ExpensesListPage() {
   const [loading, setLoading] = useState(true);
   const currentUser = useAuthStore((state) => state.currentUser);
   const navigate = useNavigate();
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!currentUser) return;
-      try {
-        setLoading(true);
-        const userParams = new URLSearchParams({ userId: currentUser.id, role: currentUser.role });
-        const [expenseData, userData] = await Promise.all([
-          api<Expense[]>(`/api/expenses?${userParams.toString()}`),
-          api<User[]>('/api/users'),
-        ]);
-        setExpenses(expenseData);
-        setUsers(new Map(userData.map(u => [u.id, u])));
-      } catch (error) {
-        console.error("Failed to fetch data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const location = useLocation();
+  const fetchData = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      setLoading(true);
+      const userParams = new URLSearchParams({ userId: currentUser.id, role: currentUser.role });
+      const [expenseData, userData] = await Promise.all([
+        api<Expense[]>(`/api/expenses?${userParams.toString()}`),
+        api<User[]>('/api/users'),
+      ]);
+      setExpenses(expenseData);
+      setUsers(new Map(userData.map(u => [u.id, u])));
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [currentUser]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+  useEffect(() => {
+    if (location.state?.refresh) {
+      fetchData();
+      // Clean up state to prevent re-fetching on other navigations
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, fetchData, navigate, location.pathname]);
   const getStatusBadgeVariant = (status: Expense['status']) => {
     switch (status) {
       case 'approved':
